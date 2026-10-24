@@ -507,11 +507,40 @@ function applyStyleToFeature(feature, config) {
     });
 }
 
-function applyTileUrlTemplate(template, coords, zoom) {
-    return template
-        .replace(/\{x\}/g, coords.x)
-        .replace(/\{y\}/g, coords.y)
-        .replace(/\{z\}/g, zoom);
+// Templates are compiled once per layer: Google asks getTileUrl for every visible tile and while
+// the user pans, so three regular-expression replacements per tile is work for no reason.
+function compileTileUrlTemplate(template) {
+    const parts = [];
+    const placeholders = ["{x}", "{y}", "{z}"];
+    let index = 0;
+    while (index < template.length) {
+        const brace = template.indexOf("{", index);
+        if (brace < 0) {
+            parts.push(template.slice(index));
+            break;
+        }
+        if (brace > index) parts.push(template.slice(index, brace));
+        const placeholder = placeholders.find((candidate) => template.startsWith(candidate, brace));
+        if (!placeholder) {
+            parts.push("{");
+            index = brace + 1;
+            continue;
+        }
+        parts.push(placeholder);
+        index = brace + placeholder.length;
+    }
+    return parts;
+}
+
+function renderTileUrl(parts, coords, zoom) {
+    let url = "";
+    for (const part of parts) {
+        if (part === "{x}") url += coords.x;
+        else if (part === "{y}") url += coords.y;
+        else if (part === "{z}") url += zoom;
+        else url += part;
+    }
+    return url;
 }
 
 function updateTileOverlays(layersData) {
@@ -565,9 +594,9 @@ function updateTileOverlays(layersData) {
                 return;
             }
 
-            const urlTemplate = layer.template;
+            const compiledTemplate = compileTileUrlTemplate(layer.template);
             const mapType = new google.maps.ImageMapType({
-                getTileUrl: (coords, zoom) => applyTileUrlTemplate(urlTemplate, coords, zoom),
+                getTileUrl: (coords, zoom) => renderTileUrl(compiledTemplate, coords, zoom),
                 tileSize: new google.maps.Size(tileSize, tileSize),
                 opacity: opacity
             });

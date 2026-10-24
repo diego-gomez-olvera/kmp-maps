@@ -15,7 +15,7 @@ import kotlinx.coroutines.runBlocking
 internal fun TileOverlay.toGoogleTileProvider(): GoogleTileProvider =
     when (val source = source) {
         is TileSource.Bytes -> AndroidMapsTileProvider(source.provider)
-        is TileSource.UrlTemplate -> AndroidUrlTileProvider(source.template, tileSize)
+        is TileSource.UrlTemplate -> AndroidUrlTileProvider(source.parsed, tileSize)
     }
 
 /**
@@ -49,12 +49,14 @@ internal class AndroidMapsTileProvider(private val provider: TileProvider) : Goo
  * `User-Agent`, and the SDK's downloader sends none. A failed download returns `null` ("no tile",
  * which the SDK may retry) instead of an empty tile, which it would cache.
  *
- * @param template Tile URL containing `{x}`, `{y}` and `{z}`
+ * @param template Parsed tile URL template
  */
-internal class AndroidUrlTileProvider(private val template: String, private val tileSize: Int) :
-    GoogleTileProvider {
+internal class AndroidUrlTileProvider(
+    private val template: ParsedTileUrlTemplate,
+    private val tileSize: Int,
+) : GoogleTileProvider {
     override fun getTile(x: Int, y: Int, zoom: Int): Tile? {
-        val url = TileUrlTemplate.resolve(template, zoom = zoom, x = x, y = y)
+        val url = template.resolve(zoom = zoom, x = x, y = y)
         return try {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.connectTimeout = TIMEOUT_MS
