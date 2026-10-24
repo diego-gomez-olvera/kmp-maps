@@ -70,8 +70,9 @@ public sealed interface TileSource {
      * @property template Tile URL, for example `https://tile.openstreetmap.org/{z}/{x}/{y}.png`
      */
     public data class UrlTemplate(public val template: String) : TileSource {
-        /** Template validated once, so requesting a tile only substitutes into it. */
-        internal val url: TileUrl = TileUrl.of(template)
+        init {
+            requireValidTileUrl(template)
+        }
     }
 }
 

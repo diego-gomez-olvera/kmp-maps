@@ -4,11 +4,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
-class TileUrlTest {
+class TileUrlTemplateTest {
 
     @Test
     fun rejectsBlankTemplate() {
-        assertFailsWith<IllegalArgumentException> { TileUrl.of("   ") }
+        assertFailsWith<IllegalArgumentException> { requireValidTileUrl("   ") }
         assertFailsWith<IllegalArgumentException> { TileSource.UrlTemplate("") }
     }
 
@@ -20,7 +20,9 @@ class TileUrlTest {
                 "https://tiles.test/{x}/{y}.png",
             )
             .forEach { template ->
-                assertFailsWith<IllegalArgumentException>(template) { TileUrl.of(template) }
+                assertFailsWith<IllegalArgumentException>(template) {
+                    requireValidTileUrl(template)
+                }
                 assertFailsWith<IllegalArgumentException>(template) {
                     TileSource.UrlTemplate(template)
                 }
@@ -36,7 +38,7 @@ class TileUrlTest {
     fun resolvesCoordinatesIntoTheTemplate() {
         assertEquals(
             "https://tiles.test/12/2103/1346.png",
-            TileUrl.of("https://tiles.test/{z}/{x}/{y}.png").resolve(12, 2103, 1346),
+            "https://tiles.test/{z}/{x}/{y}.png".resolveTileUrl(12, 2103, 1346),
         )
     }
 
@@ -44,8 +46,8 @@ class TileUrlTest {
     fun resolvesEveryOccurrenceAndLeavesTheRestUntouched() {
         assertEquals(
             "https://tiles.test/7/5/9.png?z=7&x=5&y=9&layer=brt%20standaard",
-            TileUrl.of("https://tiles.test/{z}/{x}/{y}.png?z={z}&x={x}&y={y}&layer=brt%20standaard")
-                .resolve(7, 5, 9),
+            "https://tiles.test/{z}/{x}/{y}.png?z={z}&x={x}&y={y}&layer=brt%20standaard"
+                .resolveTileUrl(7, 5, 9),
         )
     }
 
@@ -53,7 +55,7 @@ class TileUrlTest {
     fun keepsQueryStringsAndAmpersandsIntact() {
         assertEquals(
             "https://tiles.test/1.png?a=1&b=2&tile=3/4/5",
-            TileUrl.of("https://tiles.test/1.png?a=1&b=2&tile={z}/{x}/{y}").resolve(3, 4, 5),
+            "https://tiles.test/1.png?a=1&b=2&tile={z}/{x}/{y}".resolveTileUrl(3, 4, 5),
         )
     }
 
@@ -61,7 +63,7 @@ class TileUrlTest {
     fun leavesUnknownBracesAsLiteralText() {
         assertEquals(
             "https://tiles.test/9/1/2.png?filter={foo}&empty={}",
-            TileUrl.of("https://tiles.test/{z}/{x}/{y}.png?filter={foo}&empty={}").resolve(9, 1, 2),
+            "https://tiles.test/{z}/{x}/{y}.png?filter={foo}&empty={}".resolveTileUrl(9, 1, 2),
         )
     }
 
@@ -69,7 +71,7 @@ class TileUrlTest {
     fun resolvesNumbersOfAnyLength() {
         assertEquals(
             "https://tiles.test/22/4194303/4194303.png",
-            TileUrl.of("https://tiles.test/{z}/{x}/{y}.png").resolve(22, 4_194_303, 4_194_303),
+            "https://tiles.test/{z}/{x}/{y}.png".resolveTileUrl(22, 4_194_303, 4_194_303),
         )
     }
 
@@ -85,14 +87,13 @@ class TileUrlTest {
         val cases =
             listOf(Triple(0, 0, 0), Triple(13, 4207, 2693), Triple(22, 4_194_303, 4_194_303))
         templates.forEach { template ->
-            val url = TileUrl.of(template)
             cases.forEach { (zoom, x, y) ->
                 assertEquals(
                     template
                         .replace("{x}", x.toString())
                         .replace("{y}", y.toString())
                         .replace("{z}", zoom.toString()),
-                    url.resolve(zoom, x, y),
+                    template.resolveTileUrl(zoom, x, y),
                     "template $template at $zoom/$x/$y",
                 )
             }
