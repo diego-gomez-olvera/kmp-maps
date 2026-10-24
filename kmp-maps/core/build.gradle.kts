@@ -32,8 +32,11 @@ kotlin {
             implementation(libs.jetBrains.androidX.lifecycle.runtimeCompose)
             implementation(libs.jetBrains.androidX.lifecycle.viewmodelCompose)
             implementation(compose.materialIconsExtended)
+            implementation(libs.jetBrains.kotlinX.coroutines.core)
             implementation(libs.jetBrains.kotlinX.serialization.json)
         }
+
+        commonTest.dependencies { implementation(libs.jetBrains.kotlin.test) }
 
         androidMain.dependencies {
             implementation(libs.google.accompanist.permissions)

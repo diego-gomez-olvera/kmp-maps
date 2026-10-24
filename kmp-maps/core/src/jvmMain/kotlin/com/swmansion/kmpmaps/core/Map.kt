@@ -41,6 +41,7 @@ public actual fun Map(
     geoJsonLayers: List<GeoJsonLayer>,
     customMarkerContent: Map<String, @Composable (Marker) -> Unit>,
     webCustomMarkerContent: Map<String, (Marker) -> String>,
+    tileOverlays: List<TileOverlay>,
 ) {
     var htmlContent by remember { mutableStateOf<String?>(null) }
 
