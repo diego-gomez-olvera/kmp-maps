@@ -16,7 +16,15 @@ import com.multiplatform.webview.web.WebView
 import com.multiplatform.webview.web.rememberWebViewNavigator
 import com.multiplatform.webview.web.rememberWebViewStateWithHTMLData
 
-/** JVM implementation of the Map composable using Google Maps. */
+/**
+ * JVM implementation of the Map composable using Google Maps.
+ *
+ * Tile overlays use the Google Maps JS `ImageMapType`, which takes a tile URL rather than bytes, so
+ * only [TileSource.UrlTemplate] layers are rendered and [TileSource.Bytes] layers are ignored.
+ *
+ * Only the raster renderer draws custom map types, so layers appear only when the map is created
+ * with [WebMapProperties.useRasterRendering]; on a vector map they log a warning instead.
+ */
 @Composable
 public actual fun Map(
     modifier: Modifier,
@@ -45,7 +53,8 @@ public actual fun Map(
 ) {
     var htmlContent by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
+    // The rendering mode is fixed when the map is created, so switching it rebuilds the page.
+    LaunchedEffect(properties.webMapProperties.useRasterRendering) {
         val apiKey = MapConfiguration.googleMapsApiKey
         htmlContent = loadHTMLContent(apiKey, cameraPosition, properties)
     }
@@ -128,6 +137,13 @@ public actual fun Map(
                 navigator.evaluateJavaScript(
                     "updateGeoJsonLayers($json, ${clusterSettings.enabled})"
                 )
+            }
+        }
+
+        LaunchedEffect(tileOverlays, loadingState) {
+            if (loadingState is LoadingState.Finished) {
+                val json = tileOverlays.toTileOverlaysJson()
+                navigator.evaluateJavaScript("updateTileOverlays($json)")
             }
         }
 

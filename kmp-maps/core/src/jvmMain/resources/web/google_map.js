@@ -7,6 +7,14 @@ let jsPolylines = [];
 
 let geoJsonMarkers = [];
 
+// Keyed by "tileSize|template"; reused so an opacity change does not reload tiles.
+let tileLayerCache = new Map();
+let pendingTileLayers = null;
+
+// Only the raster renderer draws overlayMapTypes (a map ID selects the vector one, which ignores
+// them), so the mode is fixed when the map is created.
+let rasterRendering = false;
+
 let markerCluster;
 let trafficLayer = null;
 
@@ -26,6 +34,8 @@ async function initMap() {
     ColorScheme = ColorSchemeLib;
 
     const selectedMapId = "{{INITIAL_MAP_ID}}";
+    const selectedRenderingType = "{{INITIAL_RENDERING_TYPE}}";
+    const rasterRenderingRequested = selectedRenderingType === "raster";
     const selectedLat = "{{INITIAL_LAT}}";
     const selectedLng = "{{INITIAL_LNG}}";
     const selectedZoom = "{{INITIAL_ZOOM}}";
@@ -33,7 +43,9 @@ async function initMap() {
 
     map = new Map(document.getElementById("map"), {
         mapId: selectedMapId,
-        colorScheme: selectedColorScheme,
+        // The raster renderer has no dark style: a dark scheme would keep the map vector.
+        colorScheme: rasterRenderingRequested ? "LIGHT" : selectedColorScheme,
+        ...(rasterRenderingRequested ? { renderingType: "raster" } : {}),
         center: {
             lat: Number(selectedLat),
             lng: Number(selectedLng)
@@ -41,6 +53,7 @@ async function initMap() {
         zoom: Number(selectedZoom),
         disableDefaultUI: true,
     });
+    rasterRendering = rasterRenderingRequested;
 
     {{FIT_BOUNDS_CALL}}
 
@@ -95,6 +108,12 @@ async function initMap() {
             }
         }
     });
+
+    if (pendingTileLayers) {
+        const layers = pendingTileLayers;
+        pendingTileLayers = null;
+        updateTileOverlays(layers);
+    }
 }
 
 function mapColorScheme(themeName, ColorSchemeLib) {
@@ -481,6 +500,138 @@ function applyStyleToFeature(feature, config) {
             opacity: config.pointStyle.opacity,
             draggable: config.pointStyle.draggable,
         })
+    });
+}
+
+// Compiled once per layer: getTileUrl runs for every visible tile while panning.
+function compileTileUrlTemplate(template) {
+    const parts = [];
+    const placeholders = ["{x}", "{y}", "{z}"];
+    let index = 0;
+    while (index < template.length) {
+        const brace = template.indexOf("{", index);
+        if (brace < 0) {
+            parts.push(template.slice(index));
+            break;
+        }
+        if (brace > index) parts.push(template.slice(index, brace));
+        const placeholder = placeholders.find((candidate) => template.startsWith(candidate, brace));
+        if (!placeholder) {
+            parts.push("{");
+            index = brace + 1;
+            continue;
+        }
+        parts.push(placeholder);
+        index = brace + placeholder.length;
+    }
+    return parts;
+}
+
+function renderTileUrl(parts, coords, zoom) {
+    let url = "";
+    for (const part of parts) {
+        if (part === "{x}") url += coords.x;
+        else if (part === "{y}") url += coords.y;
+        else if (part === "{z}") url += zoom;
+        else url += part;
+    }
+    return url;
+}
+
+function updateTileOverlays(layersData) {
+    if (!map) {
+        console.warn("Map not ready yet, deferring tile layers.");
+        pendingTileLayers = layersData;
+        return;
+    }
+
+    const requested = Array.isArray(layersData) ? layersData : [];
+
+    const hasLayers = requested.some(
+        (layer) => layer && typeof layer.template === "string" && layer.template !== "" && layer.visible !== false
+    );
+    if (hasLayers && !rasterRendering) {
+        // Switching renderer at runtime does not work: getRenderingType reports RASTER but the
+        // vector renderer keeps drawing and drops custom map types.
+        console.warn(
+            "Tile layers are drawn only by the Google Maps raster renderer. Create the map with " +
+                "WebMapProperties(useRasterRendering = true), otherwise this layer will not appear."
+        );
+    }
+
+    const previous = tileLayerCache;
+    const next = new Map();
+    const desired = [];
+
+    requested.forEach((layer) => {
+        if (!layer || typeof layer.template !== "string" || layer.template === "") return;
+        if (layer.visible === false) return;
+
+        const tileSize = Number.isFinite(layer.tileSize) && layer.tileSize > 0
+            ? layer.tileSize
+            : 256;
+        const opacity = Number.isFinite(layer.opacity)
+            ? Math.min(1, Math.max(0, layer.opacity))
+            : 1;
+        // Tile size is fixed at ImageMapType creation, so it is part of the identity.
+        const key = `${tileSize}|${layer.template}`;
+        if (next.has(key)) return;
+
+        try {
+            const cached = previous.get(key);
+            if (cached) {
+                cached.mapType.setOpacity(opacity);
+                next.set(key, cached);
+                desired.push(cached.mapType);
+                return;
+            }
+
+            const compiledTemplate = compileTileUrlTemplate(layer.template);
+            const mapType = new google.maps.ImageMapType({
+                getTileUrl: (coords, zoom) => renderTileUrl(compiledTemplate, coords, zoom),
+                tileSize: new google.maps.Size(tileSize, tileSize),
+                opacity: opacity
+            });
+            next.set(key, { mapType });
+            desired.push(mapType);
+        } catch (e) {
+            console.error("Error during updateTileOverlays:", e);
+        }
+    });
+
+    try {
+        syncOverlayMapTypes(previous, desired);
+        tileLayerCache = next;
+    } catch (e) {
+        console.error("Error during updateTileOverlays:", e);
+    }
+}
+
+// `desired` is in ascending zIndex order because a later overlay map type is drawn on top. Overlays
+// we do not own are left in place.
+function syncOverlayMapTypes(previous, desired) {
+    const overlays = map.overlayMapTypes;
+    const owned = new Set();
+    previous.forEach((entry) => owned.add(entry.mapType));
+
+    for (let i = overlays.getLength() - 1; i >= 0; i--) {
+        const current = overlays.getAt(i);
+        if (owned.has(current) && desired.indexOf(current) === -1) {
+            overlays.removeAt(i);
+        }
+    }
+
+    desired.forEach((mapType, index) => {
+        if (overlays.getAt(index) === mapType) return;
+
+        for (let j = overlays.getLength() - 1; j >= index; j--) {
+            if (overlays.getAt(j) === mapType) {
+                overlays.removeAt(j);
+                break;
+            }
+        }
+
+        overlays.insertAt(index, mapType);
     });
 }
 

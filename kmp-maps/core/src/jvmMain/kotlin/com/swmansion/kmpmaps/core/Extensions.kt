@@ -213,6 +213,34 @@ internal fun Polyline.toJson() = buildJsonObject {
 }
 
 /**
+ * Serializes the [TileOverlay] layers the desktop backend can draw to a JSON array.
+ *
+ * `ImageMapType` takes a tile URL rather than image bytes, so [TileSource.Bytes] layers are
+ * dropped. Layers are sorted by [TileOverlay.zIndex] because the JS side inserts them in the order
+ * it receives them and a later overlay map type is drawn on top.
+ *
+ * The template travels as JSON, not interpolated into the JavaScript call, so a tile URL containing
+ * `&`, a quote or a backslash cannot break the call.
+ *
+ * @return A JSON array string with `template`, `opacity`, `visible`, `tileSize` and `zIndex` per
+ *   layer.
+ */
+internal fun List<TileOverlay>.toTileOverlaysJson() =
+    sortedBy { it.zIndex }
+        .mapNotNull { overlay ->
+            val source = overlay.source as? TileSource.UrlTemplate ?: return@mapNotNull null
+
+            buildJsonObject {
+                put("template", source.template)
+                put("opacity", overlay.opacity)
+                put("visible", overlay.visible)
+                put("tileSize", overlay.tileSize)
+                put("zIndex", overlay.zIndex)
+            }
+        }
+        .toJsonString()
+
+/**
  * Serializes a [GeoJsonLayer] to a [JsonObject].
  *
  * @return [JsonObject] containing raw GeoJSON string and associated feature styles.
