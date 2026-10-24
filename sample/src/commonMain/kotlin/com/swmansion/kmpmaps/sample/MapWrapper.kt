@@ -17,6 +17,7 @@ import com.swmansion.kmpmaps.core.MapUISettings
 import com.swmansion.kmpmaps.core.Marker
 import com.swmansion.kmpmaps.core.Polygon
 import com.swmansion.kmpmaps.core.Polyline
+import com.swmansion.kmpmaps.core.TileOverlay
 import com.swmansion.kmpmaps.core.WebMapProperties
 import com.swmansion.kmpmaps.googlemaps.Map as GoogleMap
 
@@ -35,6 +36,8 @@ internal data class MapOptions(
     val showPolygonGeoJson: Boolean = false,
     val showLineGeoJson: Boolean = false,
     val clusteringEnabled: Boolean = false,
+    val showTileOverlay: Boolean = false,
+    val showUrlTileOverlay: Boolean = false,
 )
 
 @Composable
@@ -61,7 +64,12 @@ internal fun MapWrapper(
                         minZoomPreference = 3f,
                         maxZoomPreference = 21f,
                     ),
-                webMapProperties = WebMapProperties(mapId = "ee04f651cb7da64943cba589"),
+                webMapProperties =
+                    WebMapProperties(
+                        mapId = "ee04f651cb7da64943cba589",
+                        // A tile layer is only drawn by the raster renderer.
+                        useRasterRendering = options.showUrlTileOverlay,
+                    ),
             ),
         uiSettings =
             MapUISettings(
@@ -98,6 +106,11 @@ internal fun MapWrapper(
         geoJsonLayers = geoJsonLayers,
         customMarkerContent = customMarkerContent,
         webCustomMarkerContent = customWebMarkerContent,
+        tileOverlays =
+            buildList {
+                if (options.showTileOverlay) add(demoTileOverlay)
+                if (options.showUrlTileOverlay) add(demoUrlTileOverlay)
+            },
     )
 }
 
@@ -131,6 +144,7 @@ private fun Map(
     geoJsonLayers: List<GeoJsonLayer> = emptyList(),
     customMarkerContent: Map<String, @Composable (Marker) -> Unit> = emptyMap(),
     webCustomMarkerContent: Map<String, (Marker) -> String> = emptyMap(),
+    tileOverlays: List<TileOverlay> = emptyList(),
 ) {
     when (mapProvider) {
         MapProvider.NATIVE ->
@@ -157,6 +171,7 @@ private fun Map(
                 geoJsonLayers = geoJsonLayers,
                 customMarkerContent = customMarkerContent,
                 webCustomMarkerContent = webCustomMarkerContent,
+                tileOverlays = tileOverlays,
             )
         MapProvider.GOOGLE_MAPS ->
             GoogleMap(
