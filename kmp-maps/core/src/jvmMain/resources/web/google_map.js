@@ -7,6 +7,16 @@ let jsPolylines = [];
 
 let geoJsonMarkers = [];
 
+// Raster tile layers created from a {x}/{y}/{z} URL template, keyed by "tileSize|template".
+// The ImageMapType objects are reused across updates so an opacity change does not reload tiles.
+let tileLayerCache = new Map();
+let pendingTileLayers = null;
+
+// Custom map types are drawn only by the raster renderer, and with a map ID Google renders a vector
+// map, which silently ignores overlayMapTypes. The mode therefore has to be chosen when the map is
+// created (WebMapProperties.useRasterRendering).
+let rasterRendering = false;
+
 let markerCluster;
 let trafficLayer = null;
 
@@ -26,6 +36,8 @@ async function initMap() {
     ColorScheme = ColorSchemeLib;
 
     const selectedMapId = "{{INITIAL_MAP_ID}}";
+    const selectedRenderingType = "{{INITIAL_RENDERING_TYPE}}";
+    const rasterRenderingRequested = selectedRenderingType === "raster";
     const selectedLat = "{{INITIAL_LAT}}";
     const selectedLng = "{{INITIAL_LNG}}";
     const selectedZoom = "{{INITIAL_ZOOM}}";
@@ -33,7 +45,10 @@ async function initMap() {
 
     map = new Map(document.getElementById("map"), {
         mapId: selectedMapId,
-        colorScheme: selectedColorScheme,
+        // The raster renderer has no dark style, so requesting a dark scheme keeps the map vector and
+        // silently drops custom map types: tile layers force the light scheme while they are used.
+        colorScheme: rasterRenderingRequested ? "LIGHT" : selectedColorScheme,
+        ...(rasterRenderingRequested ? { renderingType: "raster" } : {}),
         center: {
             lat: Number(selectedLat),
             lng: Number(selectedLng)
@@ -41,6 +56,7 @@ async function initMap() {
         zoom: Number(selectedZoom),
         disableDefaultUI: true,
     });
+    rasterRendering = rasterRenderingRequested;
 
     {{FIT_BOUNDS_CALL}}
 
@@ -95,6 +111,13 @@ async function initMap() {
             }
         }
     });
+
+    // Tile layers requested before the map existed are applied once, in their original order.
+    if (pendingTileLayers) {
+        const layers = pendingTileLayers;
+        pendingTileLayers = null;
+        updateTileOverlays(layers);
+    }
 }
 
 function mapColorScheme(themeName, ColorSchemeLib) {
@@ -481,6 +504,114 @@ function applyStyleToFeature(feature, config) {
             opacity: config.pointStyle.opacity,
             draggable: config.pointStyle.draggable,
         })
+    });
+}
+
+function applyTileUrlTemplate(template, coords, zoom) {
+    return template
+        .replace(/\{x\}/g, coords.x)
+        .replace(/\{y\}/g, coords.y)
+        .replace(/\{z\}/g, zoom);
+}
+
+function updateTileOverlays(layersData) {
+    if (!map) {
+        console.warn("Map not ready yet, deferring tile layers.");
+        pendingTileLayers = layersData;
+        return;
+    }
+
+    const requested = Array.isArray(layersData) ? layersData : [];
+
+    const hasLayers = requested.some(
+        (layer) => layer && typeof layer.template === "string" && layer.template !== "" && layer.visible !== false
+    );
+    if (hasLayers && !rasterRendering) {
+        // A map that is already drawing vector tiles does not really switch renderer when asked at
+        // runtime (getRenderingType reports RASTER, but the vector renderer keeps drawing and drops
+        // custom map types), so the mode has to be chosen when the map is created. Warn instead of
+        // pretending the layer will show up.
+        console.warn(
+            "Tile layers are drawn only by the Google Maps raster renderer. Create the map with " +
+                "WebMapProperties(useRasterRendering = true), otherwise this layer will not appear."
+        );
+    }
+
+    const previous = tileLayerCache;
+    const next = new Map();
+    const desired = [];
+
+    requested.forEach((layer) => {
+        if (!layer || typeof layer.template !== "string" || layer.template === "") return;
+        if (layer.visible === false) return;
+
+        const tileSize = Number.isFinite(layer.tileSize) && layer.tileSize > 0
+            ? layer.tileSize
+            : 256;
+        const opacity = Number.isFinite(layer.opacity)
+            ? Math.min(1, Math.max(0, layer.opacity))
+            : 1;
+        // The tile size is baked into an ImageMapType when it is created, so it is part of the
+        // layer identity; everything else can be updated on the existing layer.
+        const key = `${tileSize}|${layer.template}`;
+        if (next.has(key)) return;
+
+        try {
+            const cached = previous.get(key);
+            if (cached) {
+                cached.mapType.setOpacity(opacity);
+                next.set(key, cached);
+                desired.push(cached.mapType);
+                return;
+            }
+
+            const urlTemplate = layer.template;
+            const mapType = new google.maps.ImageMapType({
+                getTileUrl: (coords, zoom) => applyTileUrlTemplate(urlTemplate, coords, zoom),
+                tileSize: new google.maps.Size(tileSize, tileSize),
+                opacity: opacity
+            });
+            next.set(key, { mapType });
+            desired.push(mapType);
+        } catch (e) {
+            console.error("Error during updateTileOverlays:", e);
+        }
+    });
+
+    try {
+        syncOverlayMapTypes(previous, desired);
+        tileLayerCache = next;
+    } catch (e) {
+        console.error("Error during updateTileOverlays:", e);
+    }
+}
+
+// Moves the layers we own in `map.overlayMapTypes` to match `desired`, which arrives in ascending
+// zIndex order because a later overlay map type is drawn on top. Layers we do not own are left in
+// place, and the ones that survive are reused instead of recreated.
+function syncOverlayMapTypes(previous, desired) {
+    const overlays = map.overlayMapTypes;
+    const owned = new Set();
+    previous.forEach((entry) => owned.add(entry.mapType));
+
+    for (let i = overlays.getLength() - 1; i >= 0; i--) {
+        const current = overlays.getAt(i);
+        if (owned.has(current) && desired.indexOf(current) === -1) {
+            overlays.removeAt(i);
+        }
+    }
+
+    desired.forEach((mapType, index) => {
+        if (overlays.getAt(index) === mapType) return;
+
+        for (let j = overlays.getLength() - 1; j >= index; j--) {
+            if (overlays.getAt(j) === mapType) {
+                overlays.removeAt(j);
+                break;
+            }
+        }
+
+        overlays.insertAt(index, mapType);
     });
 }
 

@@ -16,7 +16,20 @@ import com.multiplatform.webview.web.WebView
 import com.multiplatform.webview.web.rememberWebViewNavigator
 import com.multiplatform.webview.web.rememberWebViewStateWithHTMLData
 
-/** JVM implementation of the Map composable using Google Maps. */
+/**
+ * JVM implementation of the Map composable using Google Maps.
+ *
+ * Tile overlays are drawn with the Google Maps JS `ImageMapType`, which points the map at a tile
+ * URL and cannot be handed image bytes, so only [TileSource.UrlTemplate] layers are rendered and
+ * [TileSource.Bytes] layers are silently ignored. Layers are applied in [TileOverlay.zIndex] order,
+ * and an existing layer is updated in place instead of being recreated, so changing the opacity
+ * does not refetch its tiles.
+ *
+ * A custom map type is only drawn by the raster renderer, so the first URL-template layer switches
+ * the map to raster rendering: Google renders vector maps when it is given a map ID, and those
+ * silently ignore custom map types. Tilt, rotation and vector styling are not available while the
+ * map renders as raster; markers keep working.
+ */
 @Composable
 public actual fun Map(
     modifier: Modifier,
@@ -41,13 +54,14 @@ public actual fun Map(
     geoJsonLayers: List<GeoJsonLayer>,
     customMarkerContent: Map<String, @Composable (Marker) -> Unit>,
     webCustomMarkerContent: Map<String, (Marker) -> String>,
-    // Desktop renders Google Maps JS in a WebView, which would need an ImageMapType bridge: not
-    // implemented yet.
+    // Only TileSource.UrlTemplate layers reach the WebView; TileSource.Bytes is desktop-unsupported
+    // because Google Maps JS ImageMapType takes a tile URL. See the KDoc above.
     tileOverlays: List<TileOverlay>,
 ) {
     var htmlContent by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
+    // The rendering mode is fixed when the map is created, so switching it rebuilds the page.
+    LaunchedEffect(properties.webMapProperties.useRasterRendering) {
         val apiKey = MapConfiguration.googleMapsApiKey
         htmlContent = loadHTMLContent(apiKey, cameraPosition, properties)
     }
@@ -130,6 +144,13 @@ public actual fun Map(
                 navigator.evaluateJavaScript(
                     "updateGeoJsonLayers($json, ${clusterSettings.enabled})"
                 )
+            }
+        }
+
+        LaunchedEffect(tileOverlays, loadingState) {
+            if (loadingState is LoadingState.Finished) {
+                val json = tileOverlays.toTileOverlaysJson()
+                navigator.evaluateJavaScript("updateTileOverlays($json)")
             }
         }
 

@@ -32,6 +32,10 @@ internal fun loadHTMLContent(
         readResource("web/google_map.js")
             .replace("{{INITIAL_MAP_ID}}", properties?.webMapProperties?.mapId ?: "DEMO_MAP_ID")
             .replace("{{INITIAL_COLOR_SCHEME}}", properties?.mapTheme?.name ?: MapTheme.SYSTEM.name)
+            .replace(
+                "{{INITIAL_RENDERING_TYPE}}",
+                if (properties?.webMapProperties?.useRasterRendering == true) "raster" else "",
+            )
             .replace("{{INITIAL_LAT}}", (cameraPosition?.coordinates?.latitude ?: 0f).toString())
             .replace("{{INITIAL_LNG}}", (cameraPosition?.coordinates?.longitude ?: 0f).toString())
             .replace("{{INITIAL_ZOOM}}", (cameraPosition?.zoom ?: 0f).toString())
