@@ -23,6 +23,8 @@ Check out the sample project in the `/sample` directory for complete usage examp
 - **Multi-Provider Support:** Android (Google Maps), iOS (Apple Maps or Google Maps), and JVM/desktop (Google Maps JS).
 - **Fully Customizable Markers:** Create markers using standard Compose Multiplatform code.
 - **GeoJSON Support:** Easily render GeoJSON layers with customizable styling capabilities.
+- **Raster Tile Overlays:** Draw your own tile layer over the base map (satellite, cadastral, historical series) from a
+  provider that returns tile bytes, with opacity and visibility control.
 - **Native Rendering:** Powered by underlying native SDKs, ensuring smooth performance, correct gesture handling, and native look and feel.
 - **Rich Geometry Support:** Draw interactive circles, polygons, and polylines with full control over colors, strokes, and fills.
 - **Location Services:** Built-in location permission handling and user location display.
@@ -82,6 +84,46 @@ fun MyMapScreen() {
     )
 }
 ```
+
+### Tile overlays
+
+A tile layer is either a URL template the map downloads itself, or a provider that hands over the encoded image
+(`PNG`/`JPEG`) for a Web Mercator `z`/`x`/`y` tile.
+
+A URL template works on every target, including desktop, where the Google Maps JS renderer draws
+it as an `ImageMapType`:
+
+```kotlin
+val openStreetMap = TileOverlay(urlTemplate = "https://tile.openstreetmap.org/{z}/{x}/{y}.png")
+
+Map(
+    // …
+    tileOverlays = listOf(openStreetMap),
+)
+```
+
+A provider is for sources that are not plain `{z}/{x}/{y}` Web Mercator tiles — for example a service published in a
+different tile matrix, where you reproject each tile before returning it. It is supported on Android and Apple Maps and
+ignored on desktop (the Google Maps JS backend of `core` only takes a tile URL):
+
+```kotlin
+val historicalLayer =
+    TileOverlay(
+        provider = TileProvider { zoom, x, y -> reprojectHistoricalTile(zoom, x, y) },
+        opacity = 0.7f,
+    )
+```
+
+Tiles are drawn over the base map and below the map's markers, so annotations stay on top (Apple Maps places the layer
+above roads and below labels). Changing `opacity` repaints the tiles the map already has instead of asking for them
+again.
+
+A layer is recognised by its provider instance, so create the `TileProvider` once (top level, view model or `remember`)
+instead of inline in a composable; a new instance on every recomposition re-adds the layer and refetches its tiles.
+
+On desktop the map has to be created with `WebMapProperties(useRasterRendering = true)`: custom map types are drawn
+only by Google's raster renderer, which also means the light colour scheme, no tilt and no custom styling while the
+layer is used. A URL-template layer added to a vector map logs a warning instead of appearing.
 
 ## 📦 Installation
 

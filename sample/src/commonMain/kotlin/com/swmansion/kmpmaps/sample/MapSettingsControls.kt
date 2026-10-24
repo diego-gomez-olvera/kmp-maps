@@ -119,6 +119,33 @@ internal fun MapSettingsControls(
     }
 
     ListItem(
+        headlineContent = { Text("Tile overlay (bundled)") },
+        modifier =
+            Modifier.height(48.dp).clickable {
+                updateOptions { copy(showTileOverlay = !showTileOverlay) }
+            },
+        trailingContent = {
+            Switch(
+                checked = options.showTileOverlay,
+                onCheckedChange = { v -> updateOptions { copy(showTileOverlay = v) } },
+            )
+        },
+    )
+    ListItem(
+        headlineContent = { Text("Tile overlay (URL)") },
+        modifier =
+            Modifier.height(48.dp).clickable {
+                updateOptions { copy(showUrlTileOverlay = !showUrlTileOverlay) }
+            },
+        trailingContent = {
+            Switch(
+                checked = options.showUrlTileOverlay,
+                onCheckedChange = { v -> updateOptions { copy(showUrlTileOverlay = v) } },
+            )
+        },
+    )
+
+    ListItem(
         headlineContent = { Text("GeoJSON") },
         modifier = Modifier.height(48.dp),
         trailingContent = {
