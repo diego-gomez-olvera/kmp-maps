@@ -106,6 +106,9 @@ import androidx.compose.ui.Modifier
  * @param geoJsonLayers List of GeoJSON layers to display on the map
  * @param customMarkerContent Map of content IDs to Composable functions for custom marker content
  * @param webCustomMarkerContent Map of content IDs to a function returning an HTML string
+ * @param tileOverlays List of raster tile layers to draw over the base map. A
+ *   [TileSource.UrlTemplate] renders on every target; a [TileSource.Bytes] provider is supported on
+ *   Android and Apple Maps and ignored on Desktop (JVM)
  */
 @Composable
 public expect fun Map(
@@ -131,4 +134,5 @@ public expect fun Map(
     geoJsonLayers: List<GeoJsonLayer> = emptyList(),
     customMarkerContent: Map<String, @Composable (Marker) -> Unit> = emptyMap(),
     webCustomMarkerContent: Map<String, (Marker) -> String> = emptyMap(),
+    tileOverlays: List<TileOverlay> = emptyList(),
 )

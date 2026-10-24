@@ -29,6 +29,7 @@ google-maps-android-mapsComposeUtils = { module = "com.google.maps.android:maps-
 jetBrains-androidX-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidXLifecycle" }
 jetBrains-androidX-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidXLifecycle" }
 jetBrains-kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+jetBrains-kotlinX-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinXCoroutines" }
 jetBrains-kotlinX-coroutinesSwing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinXCoroutines" }
 jetBrains-kotlinX-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinXSerializationJson" }
 kcef = { module = "dev.datlag:kcef", version.ref = "kcef" }

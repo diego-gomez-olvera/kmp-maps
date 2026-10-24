@@ -41,6 +41,9 @@ public actual fun Map(
     geoJsonLayers: List<GeoJsonLayer>,
     customMarkerContent: Map<String, @Composable (Marker) -> Unit>,
     webCustomMarkerContent: Map<String, (Marker) -> String>,
+    // Desktop renders Google Maps JS in a WebView, which would need an ImageMapType bridge: not
+    // implemented yet.
+    tileOverlays: List<TileOverlay>,
 ) {
     var htmlContent by remember { mutableStateOf<String?>(null) }
 

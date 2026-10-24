@@ -28,6 +28,7 @@ import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.Polyline
+import com.google.maps.android.compose.TileOverlay as GoogleTileOverlay
 import com.google.maps.android.compose.clustering.Clustering
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.data.Layer
@@ -59,6 +60,7 @@ public actual fun Map(
     geoJsonLayers: List<GeoJsonLayer>,
     customMarkerContent: Map<String, @Composable (Marker) -> Unit>,
     webCustomMarkerContent: Map<String, (Marker) -> String>,
+    tileOverlays: List<TileOverlay>,
 ) {
     var mapLoaded by remember { mutableStateOf(false) }
     val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -244,6 +246,21 @@ public actual fun Map(
                             )
                         }
                     }
+                }
+            }
+
+            tileOverlays.forEach { tileOverlay ->
+                key(tileOverlay.source, tileOverlay.tileSize) {
+                    val tileProvider =
+                        remember(tileOverlay.source, tileOverlay.tileSize) {
+                            tileOverlay.toGoogleTileProvider()
+                        }
+                    GoogleTileOverlay(
+                        tileProvider = tileProvider,
+                        transparency = 1f - tileOverlay.opacity,
+                        visible = tileOverlay.visible,
+                        zIndex = tileOverlay.zIndex,
+                    )
                 }
             }
 

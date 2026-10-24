@@ -32,6 +32,7 @@ kotlin {
             implementation(libs.jetBrains.androidX.lifecycle.runtimeCompose)
             implementation(libs.jetBrains.androidX.lifecycle.viewmodelCompose)
             implementation(compose.materialIconsExtended)
+            implementation(libs.jetBrains.kotlinX.coroutines.core)
             implementation(libs.jetBrains.kotlinX.serialization.json)
         }
 

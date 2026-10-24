@@ -17,9 +17,11 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.CoroutineScope
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import platform.CoreGraphics.CGPoint
+import platform.CoreGraphics.CGSizeMake
 import platform.CoreLocation.CLLocationCoordinate2D
 import platform.CoreLocation.CLLocationCoordinate2DMake
 import platform.Foundation.NSData
@@ -33,7 +35,9 @@ import platform.MapKit.MKMapTypeHybrid
 import platform.MapKit.MKMapTypeSatellite
 import platform.MapKit.MKMapTypeStandard
 import platform.MapKit.MKMapView
+import platform.MapKit.MKOverlayLevelAboveRoads
 import platform.MapKit.MKOverlayProtocol
+import platform.MapKit.MKOverlayRenderer
 import platform.MapKit.MKPointAnnotation
 import platform.MapKit.MKPointOfInterestCategory
 import platform.MapKit.MKPointOfInterestCategoryATM
@@ -113,8 +117,10 @@ import platform.MapKit.MKPointOfInterestFilter
 import platform.MapKit.MKPolygon
 import platform.MapKit.MKPolyline
 import platform.MapKit.MKPolylineRenderer
+import platform.MapKit.MKTileOverlay
 import platform.MapKit.addOverlay
 import platform.MapKit.overlays
+import platform.MapKit.removeOverlay
 import platform.MapKit.removeOverlays
 import platform.MapKit.rendererForOverlay
 import platform.UIKit.UIColor
@@ -354,6 +360,83 @@ internal fun MKMapView.updateAppleMapsPolylines(
         }
     }
 }
+
+/**
+ * Updates Apple Maps raster tile overlays.
+ *
+ * A native overlay is reused while its source and tile size stay the same, so changing only
+ * [TileOverlay.opacity] or [TileOverlay.zIndex] repaints the tiles the map already has instead of
+ * asking for them again. Tiles are inserted above roads and below labels, so the map's own
+ * annotations stay on top of the layer.
+ *
+ * @param tileOverlays List of tile layers to display
+ * @param scope Scope owned by the map composable, used for the tile requests of a byte source
+ * @param tileOverlayStyles MutableMap to store native overlay to TileOverlay mappings for styling
+ * @param tileOverlayRenderers MutableMap of the renderers MapKit created, so their opacity can be
+ *   updated in place
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun MKMapView.updateAppleMapsTileOverlays(
+    tileOverlays: List<TileOverlay>,
+    scope: CoroutineScope,
+    tileOverlayStyles: MutableMap<MKOverlayProtocol, TileOverlay>,
+    tileOverlayRenderers: MutableMap<MKOverlayProtocol, MKOverlayRenderer>,
+) {
+    val reusable = tileOverlayStyles.entries.toMutableList()
+    val nextStyles = mutableMapOf<MKOverlayProtocol, TileOverlay>()
+
+    tileOverlays
+        .filter { it.visible }
+        .forEach { tileOverlay ->
+            val existing =
+                reusable.firstOrNull { (_, style) ->
+                    style.source == tileOverlay.source && style.tileSize == tileOverlay.tileSize
+                }
+            val nativeOverlay =
+                existing?.key
+                    ?: tileOverlay.createAppleMapsOverlay(scope).also {
+                        addOverlay(it, level = MKOverlayLevelAboveRoads)
+                    }
+            if (existing != null) reusable.remove(existing)
+            nextStyles[nativeOverlay] = tileOverlay
+        }
+
+    reusable.forEach { (nativeOverlay, _) ->
+        removeOverlay(nativeOverlay)
+        tileOverlayRenderers.remove(nativeOverlay)
+    }
+
+    tileOverlayStyles.clear()
+    tileOverlayStyles.putAll(nextStyles)
+
+    nextStyles.forEach { (nativeOverlay, tileOverlay) ->
+        tileOverlayRenderers[nativeOverlay]?.let { renderer ->
+            renderer.alpha = tileOverlay.opacity.toDouble()
+            renderer.setNeedsDisplay()
+        }
+    }
+}
+
+/**
+ * Creates the Apple Maps overlay that draws this layer.
+ *
+ * A byte source gets the custom overlay of [AppleMapsTileOverlay], which loads and draws the tiles
+ * itself; a URL template is handed to [MKTileOverlay], whose default loading needs no override.
+ *
+ * @param scope Scope owned by the map composable, used for the tile requests of a byte source
+ * @return The native overlay to add to the map
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun TileOverlay.createAppleMapsOverlay(scope: CoroutineScope): MKOverlayProtocol =
+    when (val tileSource = source) {
+        is TileSource.Bytes -> AppleMapsTileOverlay(tileSource.provider, tileSize, scope)
+        is TileSource.UrlTemplate -> {
+            val points = this@createAppleMapsOverlay.tileSize
+            MKTileOverlay(uRLTemplate = tileSource.template).also { overlay ->
+                overlay.tileSize = CGSizeMake(points.toDouble(), points.toDouble())
+            }
+        }
+    }
 
 /**
  * Converts MapType enum to Apple MapKit's map type constant.
