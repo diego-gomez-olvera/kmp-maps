@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -20,6 +21,7 @@ import platform.MapKit.MKAnnotationProtocol
 import platform.MapKit.MKCircle
 import platform.MapKit.MKMapView
 import platform.MapKit.MKOverlayProtocol
+import platform.MapKit.MKOverlayRenderer
 import platform.MapKit.MKPointAnnotation
 import platform.MapKit.MKPolygon
 import platform.MapKit.MKPolyline
@@ -68,6 +70,10 @@ public actual fun Map(
     var geoJsonExtractedMarkers by remember { mutableStateOf<List<Marker>>(emptyList()) }
     val allMarkers =
         remember(markers, geoJsonExtractedMarkers) { markers + geoJsonExtractedMarkers }
+
+    val tileScope = rememberCoroutineScope()
+    val tileOverlayStyles = remember { mutableMapOf<MKOverlayProtocol, TileOverlay>() }
+    val tileOverlayRenderers = remember { mutableMapOf<MKOverlayProtocol, MKOverlayRenderer>() }
 
     val circleStyles = remember { mutableMapOf<MKCircle, Circle>() }
     val polygonStyles = remember { mutableMapOf<MKPolygon, Polygon>() }
@@ -176,6 +182,16 @@ public actual fun Map(
         view.updateAppleMapsPolylines(polylines, polylineStyles)
     }
 
+    LaunchedEffect(mapView, tileOverlays, tileScope) {
+        val view = mapView ?: return@LaunchedEffect
+        view.updateAppleMapsTileOverlays(
+            tileOverlays = tileOverlays,
+            scope = tileScope,
+            tileOverlayStyles = tileOverlayStyles,
+            tileOverlayRenderers = tileOverlayRenderers,
+        )
+    }
+
     UIKitView(
         factory = {
             val mkMapView = MKMapView()
@@ -203,6 +219,8 @@ public actual fun Map(
                     geoJsonPolygonStyles = geoJsonPolygonStyles,
                     geoJsonPolylineStyles = geoJsonPolylineStyles,
                     geoJsonPointStyles = geoJsonPointStyles,
+                    tileOverlayStyles = tileOverlayStyles,
+                    tileOverlayRenderers = tileOverlayRenderers,
                     customMarkerContent = customMarkerContent,
                     clusterSettings = clusterSettings,
                 )

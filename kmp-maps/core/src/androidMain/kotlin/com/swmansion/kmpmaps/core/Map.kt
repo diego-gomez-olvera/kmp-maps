@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -28,6 +29,7 @@ import com.google.maps.android.compose.MarkerComposable
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.Polyline
+import com.google.maps.android.compose.TileOverlay as GoogleTileOverlay
 import com.google.maps.android.compose.clustering.Clustering
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.data.Layer
@@ -245,6 +247,22 @@ public actual fun Map(
                             )
                         }
                     }
+                }
+            }
+
+            val applicationPackageName = LocalContext.current.packageName
+            tileOverlays.forEach { tileOverlay ->
+                key(tileOverlay.source, tileOverlay.tileSize) {
+                    val tileProvider =
+                        remember(tileOverlay.source, tileOverlay.tileSize, applicationPackageName) {
+                            tileOverlay.toGoogleTileProvider(applicationPackageName)
+                        }
+                    GoogleTileOverlay(
+                        tileProvider = tileProvider,
+                        transparency = 1f - tileOverlay.opacity,
+                        visible = tileOverlay.visible,
+                        zIndex = tileOverlay.zIndex,
+                    )
                 }
             }
 

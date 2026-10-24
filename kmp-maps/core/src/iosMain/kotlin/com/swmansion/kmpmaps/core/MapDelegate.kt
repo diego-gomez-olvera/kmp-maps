@@ -25,6 +25,8 @@ import platform.MapKit.MKPolygon
 import platform.MapKit.MKPolygonRenderer
 import platform.MapKit.MKPolyline
 import platform.MapKit.MKPolylineRenderer
+import platform.MapKit.MKTileOverlay
+import platform.MapKit.MKTileOverlayRenderer
 import platform.MapKit.MKUserLocation
 import platform.UIKit.UIColor
 import platform.UIKit.UIGestureRecognizerStateBegan
@@ -57,6 +59,8 @@ internal class MapDelegate(
     private val geoJsonPolygonStyles: MutableMap<MKOverlayProtocol, AppleMapsGeoJsonPolygonStyle>,
     private val geoJsonPolylineStyles: MutableMap<MKOverlayProtocol, AppleMapsGeoJsonLineStyle>,
     private val geoJsonPointStyles: MutableMap<MKPointAnnotation, AppleMapsGeoJsonPointStyle>,
+    private val tileOverlayStyles: MutableMap<MKOverlayProtocol, TileOverlay>,
+    private val tileOverlayRenderers: MutableMap<MKOverlayProtocol, MKOverlayRenderer>,
     private val customMarkerContent: Map<String, @Composable (Marker) -> Unit>,
     private val clusterSettings: ClusterSettings,
 ) : NSObject(), MKMapViewDelegateProtocol {
@@ -132,8 +136,24 @@ internal class MapDelegate(
                 }
                 renderer
             }
+            is AppleMapsTileOverlay -> {
+                val renderer = AppleMapsTileOverlayRenderer(rendererForOverlay)
+                renderer.alpha = tileOverlayOpacity(rendererForOverlay)
+                tileOverlayRenderers[rendererForOverlay] = renderer
+                renderer
+            }
+            is MKTileOverlay -> {
+                val renderer = MKTileOverlayRenderer(tileOverlay = rendererForOverlay)
+                renderer.alpha = tileOverlayOpacity(rendererForOverlay)
+                tileOverlayRenderers[rendererForOverlay] = renderer
+                renderer
+            }
             else -> MKOverlayRenderer(rendererForOverlay)
         }
+
+    /** Falls back to fully opaque when the overlay has no matching [TileOverlay]. */
+    private fun tileOverlayOpacity(overlay: MKOverlayProtocol): Double =
+        (tileOverlayStyles[overlay]?.opacity ?: DEFAULT_TILE_OPACITY).toDouble()
 
     /**
      * Handles marker selection events when user taps on annotations.
