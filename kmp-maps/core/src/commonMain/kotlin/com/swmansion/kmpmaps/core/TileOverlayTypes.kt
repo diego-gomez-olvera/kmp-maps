@@ -6,9 +6,6 @@ public const val DEFAULT_TILE_SIZE: Int = 256
 /** Opacity of a [TileOverlay] that is fully drawn over the base map. */
 internal const val DEFAULT_TILE_OPACITY: Float = 1f
 
-/** Placeholders every [TileSource.UrlTemplate] has to contain. */
-private val TILE_URL_PLACEHOLDERS = listOf("{x}", "{y}", "{z}")
-
 /**
  * Supplies the tiles of a [TileOverlay].
  *
@@ -74,12 +71,7 @@ public sealed interface TileSource {
      */
     public data class UrlTemplate(public val template: String) : TileSource {
         init {
-            require(template.isNotBlank()) { "template must not be blank." }
-            TILE_URL_PLACEHOLDERS.forEach { placeholder ->
-                require(template.contains(placeholder)) {
-                    "template must contain $placeholder, was $template."
-                }
-            }
+            TileUrlTemplate.requireValid(template)
         }
     }
 }

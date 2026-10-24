@@ -54,11 +54,7 @@ internal class AndroidMapsTileProvider(private val provider: TileProvider) : Goo
 internal class AndroidUrlTileProvider(private val template: String, private val tileSize: Int) :
     GoogleTileProvider {
     override fun getTile(x: Int, y: Int, zoom: Int): Tile? {
-        val url =
-            template
-                .replace("{x}", x.toString())
-                .replace("{y}", y.toString())
-                .replace("{z}", zoom.toString())
+        val url = TileUrlTemplate.resolve(template, zoom = zoom, x = x, y = y)
         return try {
             val connection = URL(url).openConnection() as HttpURLConnection
             connection.connectTimeout = TIMEOUT_MS

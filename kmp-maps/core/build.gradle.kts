@@ -36,6 +36,8 @@ kotlin {
             implementation(libs.jetBrains.kotlinX.serialization.json)
         }
 
+        commonTest.dependencies { implementation(libs.jetBrains.kotlin.test) }
+
         androidMain.dependencies {
             implementation(libs.google.accompanist.permissions)
             implementation(libs.google.android.gms.playServicesMaps)

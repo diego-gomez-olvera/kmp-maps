@@ -1,8 +1,5 @@
 package com.swmansion.kmpmaps.core
 
-import kotlin.math.floor
-import kotlin.math.log2
-import kotlin.math.max
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
@@ -24,13 +21,8 @@ import platform.CoreLocation.CLLocationCoordinate2DMake
 import platform.Foundation.NSData
 import platform.Foundation.dataWithBytes
 import platform.MapKit.MKMapRect
-import platform.MapKit.MKMapRectGetMaxX
-import platform.MapKit.MKMapRectGetMaxY
-import platform.MapKit.MKMapRectGetMinX
-import platform.MapKit.MKMapRectGetMinY
 import platform.MapKit.MKMapRectMake
 import platform.MapKit.MKMapRectWorld
-import platform.MapKit.MKMapSizeWorld
 import platform.MapKit.MKOverlayProtocol
 import platform.MapKit.MKOverlayRenderer
 import platform.UIKit.UIGraphicsPopContext
@@ -238,39 +230,34 @@ internal class AppleMapsTileOverlayRenderer(private val tileOverlay: AppleMapsTi
         inContext: CGContextRef?,
     ) {
         val context = inContext ?: return
-        val mapPointsPerTile = tileOverlay.tileSize / zoomScale
-        if (mapPointsPerTile <= 0.0 || !mapPointsPerTile.isFinite()) return
-
-        val zoom = zoomLevel(tileOverlay.tileSize, zoomScale)
-        val tilesPerAxis = 1 shl zoom
         val overlayRect = tileOverlay.boundingMapRect()
-        val offsetX = overlayRect.useContents { origin.x }
-        val offsetY = overlayRect.useContents { origin.y }
+        val originX = overlayRect.useContents { origin.x }
+        val originY = overlayRect.useContents { origin.y }
+        val (minX, minY, maxX, maxY) =
+            mapRect.useContents {
+                listOf(origin.x, origin.y, origin.x + size.width, origin.y + size.height)
+            }
 
-        val firstColumn = floor((MKMapRectGetMinX(mapRect) - offsetX) / mapPointsPerTile).toInt()
-        val lastColumn = floor((MKMapRectGetMaxX(mapRect) - offsetX) / mapPointsPerTile).toInt()
-        val firstRow = floor((MKMapRectGetMinY(mapRect) - offsetY) / mapPointsPerTile).toInt()
-        val lastRow = floor((MKMapRectGetMaxY(mapRect) - offsetY) / mapPointsPerTile).toInt()
-
-        for (column in firstColumn..lastColumn) {
-            if (column !in 0 until tilesPerAxis) continue
-            for (row in firstRow..lastRow) {
-                if (row !in 0 until tilesPerAxis) continue
-                val tileRect =
-                    MKMapRectMake(
-                        offsetX + column * mapPointsPerTile,
-                        offsetY + row * mapPointsPerTile,
-                        mapPointsPerTile,
-                        mapPointsPerTile,
-                    )
-                val image = tileOverlay.cachedTile(zoom, column, row)
-                if (image != null) {
-                    drawTile(image, rectForMapRect(tileRect), context)
-                } else {
-                    // Nothing to draw yet, so repaint just this tile once the load completes.
-                    tileOverlay.loadTileIfNeeded(zoom, column, row) {
-                        setNeedsDisplayInMapRect(tileRect)
-                    }
+        val spans =
+            TileGrid.spans(
+                tileSize = tileOverlay.tileSize,
+                zoomScale = zoomScale,
+                originX = originX,
+                originY = originY,
+                minX = minX,
+                minY = minY,
+                maxX = maxX,
+                maxY = maxY,
+            )
+        spans.forEach { span ->
+            val spanRect = MKMapRectMake(span.originX, span.originY, span.size, span.size)
+            val image = tileOverlay.cachedTile(span.zoom, span.column, span.row)
+            if (image != null) {
+                drawTile(image, rectForMapRect(spanRect), context)
+            } else {
+                // Nothing to draw yet, so repaint just this tile once the load completes.
+                tileOverlay.loadTileIfNeeded(span.zoom, span.column, span.row) {
+                    setNeedsDisplayInMapRect(spanRect)
                 }
             }
         }
@@ -292,23 +279,6 @@ internal class AppleMapsTileOverlayRenderer(private val tileOverlay: AppleMapsTi
             UIGraphicsPopContext()
         }
     }
-}
-
-/**
- * Approximates the Web Mercator zoom level that [zoomScale] draws at, rounded to the nearest level.
- *
- * MapKit exposes no zoom level, only the number of points per map point. The map world is
- * `MKMapSizeWorld.width` map points wide and holds `width / tileSize` tiles per axis at its deepest
- * zoom (`2^20` for 256 pixel tiles), so every doubling of [zoomScale] adds one level on top.
- *
- * @param tileSize Edge length, in pixels, of the tiles being drawn
- * @param zoomScale Points per map point the map is drawn at
- * @return The zoom level to request tiles for
- */
-private fun zoomLevel(tileSize: Int, zoomScale: Double): Int {
-    val tilesPerAxisAtWorldWidth = MKMapSizeWorld.width / tileSize
-    val roundedScaleExponent = floor(log2(zoomScale) + 0.5)
-    return max(0, floor(log2(tilesPerAxisAtWorldWidth) + roundedScaleExponent).toInt())
 }
 
 /** Copies the bytes of this array into an [NSData] owned by the caller. */
